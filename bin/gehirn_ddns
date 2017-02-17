@@ -1,0 +1,132 @@
+#!/usr/bin/env ruby
+# -*- coding: utf-8 -*-
+require 'rubygems'
+require 'bundler/setup'
+require "logger"
+require 'yaml'
+require "json"
+require "rest-client"
+
+ROOT = File.expand_path('../', File.dirname(__FILE__))+'/';
+CONFIG_FILE = ROOT+'config/config.yml'
+
+config = YAML.load_file(CONFIG_FILE)
+
+#logger = Logger.new(File.expand_path(ROOT+config['log']['file']), config['log']['age'], config['log']['size'])
+logger = Logger.new(STDOUT)
+logger.level = if /[0-4]/.match(config['log']['level'])
+	config['log']['level']
+elsif Logger::SEV_LABEL.include? config['log']['level']
+	Logger.const_get(config['log']['level'])
+else
+	Logger::DEBUG
+end
+
+END_POINT = 'https://%{token}:%{secret}@api.gis.gehirn.jp'
+IPIFY_URL = 'https://api.ipify.org?format=json'
+CURRENT_IP = JSON.parse(RestClient.get(IPIFY_URL))['ip']
+
+
+config['zones'].each do |conf|
+  endpoint = END_POINT % {token: conf['token'], secret: conf['secret']}
+  
+  begin
+    logger.info("request:[GET] #{endpoint+'/dns/v1/zones'}")
+    zones =  JSON.parse(RestClient.get(endpoint+'/dns/v1/zones'))
+    logger.debug(JSON.pretty_generate(zones))
+  rescue RestClient::ResourceNotFound
+    logger.error('404 Resource Not Found.')
+    next
+  rescue RestClient::Unauthorized
+    logger.error('403 Unauthorized. Please check your api token/secret')
+    next
+  rescue => e
+    logger.error("#{e.class} #{e.message}")
+    logger.error e.backtrace.join("\n")
+    next
+  end
+
+  zones.each do |zone|
+    puts zone
+    if zone['name'] == conf['name']
+      logger.debug("zone found. name: #{zone['name']}")
+
+      settings = conf['records']
+      records_endpoint = endpoint+"/dns/v1/zones/#{zone['id']}/versions/#{zone['current_version_id']}/records"
+
+      begin
+        logger.info("request:[GET] #{records_endpoint}")
+        records = JSON.parse(RestClient.get(records_endpoint)) 
+        logger.debug(JSON.pretty_generate(records))
+      rescue RestClient::ResourceNotFound
+        logger.error('404 Resource Not Found.')
+        return
+      rescue RestClient::Unauthorized
+        logger.error('403 Unauthorized. Please check your api token/secret')
+        return
+      rescue => e
+        logger.error("#{e.class} #{e.message}")
+        logger.error e.backtrace.join("\n")
+        return
+      end
+
+      settings.each do |setting|
+        rec = records.find{|r| r['name'] == setting['name'] and r['type'] == setting['type'] }
+        if rec
+          # update
+          logger.info("record found. id: #{rec['id']}")
+          logger.debug(rec)
+          logger.debug(setting)
+          case rec['type']
+          when 'A' then
+            rec['records'] = setting['records'].map{|r| r['address'] = CURRENT_IP if r['address'] == 'auto'; r }
+          when 'AAAA','CNAME','MX','NS','SRV','TXT' then
+            rec['records'] = setting['records']
+          end
+          rec['ttl'] = setting['ttl'] if setting['ttl']
+
+          begin
+            logger.info("request:[PUT] #{records_endpoint+'/'+rec['id']}")
+            logger.debug(JSON.generate(rec))
+            res = JSON.parse(RestClient.put(records_endpoint+"/#{rec['id']}", JSON.generate(rec), {:content_type => :json, :accept => :json}))
+            logger.debug(JSON.pretty_generate(res))
+          rescue RestClient::ResourceNotFound
+            logger.error('404 Resource Not Found.')
+            next
+          rescue RestClient::Unauthorized
+            logger.error('403 Unauthorized. Please check your api token/secret')
+            next
+          rescue => e
+            logger.error("#{e.class} #{e.message}")
+            logger.error e.backtrace.join("\n")
+            next
+          end
+        else
+          # create new record
+          if setting['type'] == 'A'
+            setting['records'].map{|r| r['address'] = CURRENT_IP if r['address'] == 'auto'; r }
+          end
+
+          begin
+            logger.info("request:[POST] #{records_endpoint}")
+            res = JSON.parse(RestClient.post(records_endpoint, JSON.generate(setting), {:content_type => :json, :accept => :json}))
+            logger.debug(JSON.pretty_generate(res))
+          rescue RestClient::ResourceNotFound
+            logger.error('404 Resource Not Found.')
+            next
+          rescue RestClient::Unauthorized
+            logger.error('403 Unauthorized. Please check your api token/secret')
+            next
+          rescue => e
+            logger.error("#{e.class} #{e.message}")
+            logger.error e.backtrace.join("\n")
+            next
+          end
+        end
+      end
+    end
+  end
+end
+
+
+

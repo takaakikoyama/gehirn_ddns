@@ -1,0 +1,18 @@
+log:
+  file: 'log/gehirn_ddns.log'
+  age: 2          # 2 generation
+  size: 1048576   # 1MB
+  level: 'INFO'  # 0-4 or "DEBUG", "INFO", "WARN", "ERROR", "FATAL"
+
+zones:
+  -
+    name: '-- zone name --'
+    token: '-- api token --'
+    secret: '-- api secret --'
+    records:
+      # record setting -> https://support.gehirn.jp/apidocs/gis/dns/records.html#object
+      - 
+        name: '-- record name --'
+        type: 'A'
+        records:
+          - address: 'auto' # auto detect ip
