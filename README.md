@@ -4,8 +4,8 @@ Gehirn DNS Records Updater
 [Gehirn DNS](https://www.gehirn.jp/gis/dns.html)のAPIを利用して動的IP環境下のサーバのDDNSとして運用するための個人プログラム
 
 ## できること(現時点)
-・既存ゾーンのレコードの編集
-・既存ゾーンのレコードの追加
+ - 既存ゾーンのレコードの編集
+ - 既存ゾーンのレコードの追加
 
 ## setup
 ```
@@ -35,5 +35,5 @@ $ vim config/shedule.yml
 $ bundle exec whenever --update-crontab
 ```
 
-## Gehirn DNS API DOC
+## Gehirn DNS API Docment
 https://support.gehirn.jp/apidocs/gis/dns/index.html
